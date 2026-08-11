@@ -1,0 +1,214 @@
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+
+enum Role {
+  CUSTOMER
+  ADMIN
+  SUPER_ADMIN
+}
+
+model User {
+  id            String         @id @default(uuid())
+  email         String         @unique
+  password      String
+  role          Role           @default(CUSTOMER)
+  createdAt     DateTime       @default(now())
+  profile       Profile?
+  refreshTokens RefreshToken[]
+  sessions      Session[]
+  auditLogs     AuditLog[]
+  orders        Order[]
+  notifications Notification[]
+}
+
+model Profile {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  phone     String?
+  address   String?
+  avatar    String?  // Base64 data URL or url
+  updatedAt DateTime @updatedAt
+}
+
+model Category {
+  id       String    @id @default(uuid())
+  name     String    @unique
+  products Product[]
+}
+
+model Product {
+  id             String     @id @default(uuid())
+  name           String
+  desc           String
+  price          Float
+  image          String
+  categoryId     String
+  category       Category   @relation(fields: [categoryId], references: [id])
+  isAvailable    Boolean    @default(true)
+  customizations Json?      // JSON array of customizations
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  orderItems     OrderItem[]
+}
+
+model Order {
+  id               String      @id
+  userId           String
+  user             User        @relation(fields: [userId], references: [id])
+  customerName     String
+  customerPhone    String
+  address          String
+  subtotal         Float
+  discount         Float
+  shippingFee      Float
+  grandTotal       Float
+  paymentMethod    String
+  paymentStatus    String      // e.g. "Pending" | "Paid" | "Failed"
+  status           String      // e.g. "Pending" | "Cooking" | "Shipping" | "Completed" | "Cancelled"
+  date             DateTime    @default(now())
+  distanceKm       Float
+  courierName      String?
+  courierPhone     String?
+  platform         String      // e.g. "Katsumboo Direct" | "GoFood" | etc.
+  reviews          Json?       // { rating: number, comment: string, date: string }
+  statusTimestamps Json?       // { pending: string, cooking: string, shipping: string, completed: string }
+  mapCoords        Json?       // { x: number, y: number }
+  orderItems       OrderItem[]
+  payments         Payment[]
+  createdAt        DateTime    @default(now())
+}
+
+model OrderItem {
+  id                     String  @id @default(uuid())
+  orderId                String
+  order                  Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId              String?
+  product                Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  name                   String
+  desc                   String?
+  price                  Float
+  image                  String
+  category               String
+  quantity               Int
+  selectedSauce          String?
+  levelPedas             Int?
+  selectedCustomizations Json?   // JSON map of custom options selected
+}
+
+model Wishlist {
+  id        String   @id @default(uuid())
+  userId    String
+  productId String
+  createdAt DateTime @default(now())
+
+  @@unique([userId, productId])
+}
+
+model Cart {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  items     Json     // JSON array of cart items
+  updatedAt DateTime @updatedAt
+}
+
+model Notification {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        String   // e.g. "voucher" | "info"
+  title       String
+  body        String
+  voucherCode String?
+  isRead      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+}
+
+model Coupon {
+  id            String   @id @default(uuid())
+  code          String   @unique
+  type          String   // e.g. "fixed" | "percent" | "free_shipping"
+  value         Float
+  minPurchase   Float
+  description   String
+  maxUses       Int      @default(9999)
+  usedByUserIds Json?    // JSON array of strings
+  sentToUserIds Json?    // JSON array of strings
+  createdAt     DateTime @default(now())
+}
+
+model Payment {
+  id            String        @id @default(uuid())
+  orderId       String
+  order         Order         @relation(fields: [orderId], references: [id])
+  method        String        // QRIS, GoPay, ShopeePay, BCA Transfer, SeaBank Transfer
+  amount        Float
+  status        String        // Pending, Success, Failed
+  transactionId String?
+  transactions  Transaction[]
+  createdAt     DateTime      @default(now())
+}
+
+model Transaction {
+  id          String   @id @default(uuid())
+  paymentId   String
+  payment     Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  rawResponse Json     // Raw webhook response from Midtrans/mock
+  createdAt   DateTime @default(now())
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  isRevoked Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action    String   // LOGIN, LOGOUT, CREATE, UPDATE, DELETE, PAYMENT, ADMIN_ACTION
+  details   String
+  ipAddress String?
+  createdAt DateTime @default(now())
+}
+
+model Courier {
+  id          String   @id @default(uuid())
+  name        String
+  phone       String
+  vehicleType String
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+}
+
+model Promo {
+  id        String   @id @default(uuid())
+  title     String
+  subtitle  String
+  image     String?  // Base64 data URL
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
